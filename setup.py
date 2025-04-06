@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     author="kokaito-git",
     name="kmodels",
-    version="0.1.0.0",
+    version="0.1.1.0",
     description="KModels",
     author_email="kokaito.git@gmail.com",
     url="https://github.com/kokaito-git/knotification",
@@ -18,6 +18,7 @@ setup(
     install_requires=[
         "pydantic",
         "typeguard",
+        "kcolors"
     ],
     packages=find_packages(),
     python_requires=">=3.13",

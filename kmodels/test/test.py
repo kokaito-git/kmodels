@@ -131,6 +131,24 @@ Computer science student
     print('rebuild_of_bundle', rebuild_of_bundle)
 
 
+def test_omit_if():
+    from kmodels.types import OmitIf, OmitIfNone, OmitIfUnset, Unset, unset
+    from abc import ABC, abstractmethod
+    class Testing(CoreModel, ABC):
+        model_config = dict(strict=True)
+
+        test_a: OmitIf[int | None, None] = None
+        test_b: OmitIfNone[int | None] = None
+        test_c: OmitIfUnset[int | Unset] = unset
+
+
+
+    test = Testing(test_a=None)
+    print(repr(test))
+    print(test.model_dump())
+
+
 if __name__ == '__main__':
     # complex_test()
-    simple_test()
+    # simple_test()
+    test_omit_if()

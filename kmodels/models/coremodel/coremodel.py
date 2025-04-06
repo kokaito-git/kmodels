@@ -2,26 +2,51 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from typing import Any, ClassVar, Type, Iterable, TypeVar
+
 from pydantic import BaseModel, model_validator, Field, model_serializer, PlainSerializer
 from typeguard import typechecked
+from kmodels.types import OmitIfNone, OmitIfUnset, OmitIf
+from kcolors.refs import GREEN, END
 
-from kmodels.types import OmitIfNone
+from kmodels.utils import AbstractUtils
+
+"""
+TODO: 
+    - Terminar la traducción.
+    - Eliminar __cls_key_name__ y __class_registry__ del interior de _PrivateCoreModel.
+"""
 
 
 class _CustomSerializator(BaseModel, ABC):
-    def _get_skip_if_none_fields(self) -> set[str]:
+    """
+    Custom serializer that omits fields marked with OmitIfNone and OmitIfUnset if their values are None or Unset.
+    """
+
+    def _get_part_of(self, target_cls: Type) -> set[str]:
         """
-        Averigua que fields deben ser omitidos si son None por ser OmitIfNone
+        Returns a set with the names of fields that include target_cls in their metadata.
+        Used to detect fields marked with OmitIfNone/OmitIfUnset.
         """
         return {
             name
             for name, field_info in self.model_fields.items()
-            if any(isinstance(metadata, OmitIfNone) for metadata in field_info.metadata)
+            if any(isinstance(metadata, target_cls) for metadata in field_info.metadata)
+        }
+
+    def _get_omit_if_custom(self) -> dict[str, tuple[type, ...]]:
+        """
+        Returns a dict with field names and the types that should be omitted if matched (for OmitIf).
+        """
+        return {
+            name: metadata.excluded
+            for name, field_info in self.model_fields.items()
+            for metadata in field_info.metadata
+            if isinstance(metadata, OmitIf)
         }
 
     def _get_serialize_aliases(self) -> dict[str, str]:
         """
-        Crea un diccionario de alias a partir de self.model_fields()
+        Creates a dictionary of aliases from self.model_fields(). Required for aliasing to work properly.
         """
         return {
             name: field_info.serialization_alias
@@ -32,15 +57,32 @@ class _CustomSerializator(BaseModel, ABC):
     @model_serializer
     def _core_serializer(self) -> dict[str, Any]:
         """
-        Serializador personalizado que omite los miembros OmitIfNone si es que son None
+        Main serialization function.
         """
-        skip_if_none = self._get_skip_if_none_fields()
+        skip_if_none = self._get_part_of(OmitIfNone)
+        skip_if_unset = self._get_part_of(OmitIfUnset)
+        skip_if_custom = self._get_omit_if_custom()
+
         serialize_aliases = self._get_serialize_aliases()
 
         serialized = dict()
         for name, value in self:
-            # Skip serializing None if it was marked with "OmitIfNone"
-            if value is None and name in skip_if_none:
+            # OmitIf
+            if name in skip_if_custom:
+                # Si None está en los tipos lo delegamos a OmitIfNone
+                if None in skip_if_custom[name] and name not in skip_if_none:
+                    skip_if_none.add(name)
+                excluded_types = tuple(t for t in skip_if_custom[name] if t is not None)
+
+                if isinstance(value, excluded_types):
+                    continue
+
+            # OmitIfNone
+            if name in skip_if_none and value is None:
+                continue
+
+            # OmitIfUnset
+            if name in skip_if_unset and type(value).__name__ == 'Unset':
                 continue
 
             serialize_key = serialize_aliases.get(name, name)
@@ -56,18 +98,26 @@ class _CustomSerializator(BaseModel, ABC):
 
 
 class _PrivateCoreModel(_CustomSerializator, ABC):
+    """Base class for CoreModel that holds all private methods, making it easier to read and understand."""
     __class_registry__: ClassVar[dict[str, Type[CoreModel]]] = {}
-    __auto_register__: ClassVar[bool] = False
-
+    """Please do not modify __class_registry__ externally."""
     __cls_key_name__: ClassVar[str] = 'cls_key'
+    """Please do not modify."""
+
+    __auto_register__: ClassVar[bool] = False
+    """All subclasses of this class will be automatically registered if set to True."""
+
+    __render_cls_key__: ClassVar[bool] = False
+    """If True, __repr__ will also include cls_key."""
+
     cls_key: OmitIfNone[str | None] = Field(default=None)
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
         """
-        Incorpora la funcionalidad de registrar las subclases automáticamente si __auto_register__ == True.
-        Si no se quiere/puede utilizar en una rama de clases entonces puedes usar CoreModel.register(CLASE) o
-        simplemente CLASE.register() con las clases que lo requieran.
+        Automatically registers subclasses if __auto_register__ == True.
+        If this is not desirable/possible in a branch of classes, you can use CoreModel.register(CLASS) or
+        simply CLASS.register() for the required classes.
         """
         super().__pydantic_init_subclass__(**kwargs)
         if cls.__auto_register__ and not cls.is_registered():
@@ -77,12 +127,18 @@ class _PrivateCoreModel(_CustomSerializator, ABC):
     @classmethod
     def _cls_key_handler(cls, data: Any) -> Any:
         """
-        Si la clase está registrada:
-        - Asigna automáticamente cls_key.
-        Si la clase no está registrada:
-        - Lanza excepción si se ha indicado cls_key.
-        - Lanza excepción si el cls_key
+        If the class is registered:
+        - Automatically assigns cls_key.
+        If the class is not registered:
+        - Raises an exception if cls_key is provided.
+        - Raises an exception if the cls_key is invalid.
         """
+
+        # Lanza excepción si se trata de inicializar una clase abstracta por ABC.
+        # - Si se ha implementado un método abstracto entonces la excepción correspondiente se lanzará en lugar de esta.
+        # - Si no hay métodos abstractos, pero hereda de ABC entonces esta es la función que nos evitará problemas.
+        AbstractUtils.raise_abstract_class(cls)
+
         if isinstance(data, dict):
             # Autoasignar cls_key si la clase está registrada y cls_key es None
             cls_key = data.get(cls.__cls_key_name__)
@@ -112,12 +168,28 @@ class _PrivateCoreModel(_CustomSerializator, ABC):
     @classmethod
     def _register_single(cls, target_class: Type[CoreModel]):
         """
-        Registra target_class.
+        Registers target_class.
         """
         cls_key = target_class.generate_cls_key()
         if cls_key in cls.__class_registry__:
             raise KeyError(f"La clase '{cls_key}' ya está registrada.")
         cls.__class_registry__[cls_key] = target_class
+
+    def __repr_args__(self) -> list[tuple[str, Any]]:
+        """
+        Opcionalmente, omite 'cls_key' del __repr__, basado en __render_cls_key__.
+        """
+        return [
+            (k, v) for k, v in self.__dict__.items()
+            if self.__render_cls_key__ or k != 'cls_key'
+        ]
+
+    def __repr__(self) -> str:
+        """
+        Custom string representation like: {GREEN}ClassName{END}(attr1=val1, attr2=val2)
+        """
+        args = ", ".join(f"{k}={v!r}" for k, v in self.__repr_args__())
+        return f"{GREEN}{self.__class__.__name__}{END}({args})"
 
     @classmethod
     @abstractmethod

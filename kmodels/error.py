@@ -1,3 +1,2 @@
-
-class IsAbstract(Exception):
+class IsAbstract(TypeError):
     ...
