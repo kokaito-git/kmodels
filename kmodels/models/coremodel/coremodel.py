@@ -17,6 +17,18 @@ TODO:
 """
 
 
+def _generate_simple_cls_key(cls) -> str:
+    """
+    Genera una key única para cada clase que va a funcionar incluso con tipos genéricos.
+    """
+    type_params = getattr(cls, '__pydantic_generic_metadata__', {}).get('args', ())
+    base_key = cls.__name__
+
+    if type_params:
+        return f"{base_key}[{','.join(tp.__name__ for tp in type_params)}]"
+    return base_key
+
+
 class _CustomSerializator(BaseModel, ABC):
     """
     Custom serializer that omits fields marked with OmitIfNone and OmitIfUnset if their values are None or Unset.
@@ -110,6 +122,9 @@ class _PrivateCoreModel(_CustomSerializator, ABC):
     __render_cls_key__: ClassVar[bool] = False
     """If True, __repr__ will also include cls_key."""
 
+    __cls_discriminator__: ClassVar[str | None] = None
+    """Discriminator that allows to register different classes with the same name."""
+
     cls_key: OmitIfNone[str | None] = Field(default=None)
 
     @classmethod
@@ -172,7 +187,10 @@ class _PrivateCoreModel(_CustomSerializator, ABC):
         """
         cls_key = target_class.generate_cls_key()
         if cls_key in cls.__class_registry__:
-            raise KeyError(f"La clase '{cls_key}' ya está registrada.")
+            raise KeyError(
+                f"La clase con el cls_key '{cls_key}' ya está registrada. Asigna un __cls_discriminator__ a una o a "
+                f"las dos clases si quieres registrar dos clases bajo el mismo nombre."
+            )
         cls.__class_registry__[cls_key] = target_class
 
     def __repr_args__(self) -> list[tuple[str, Any]]:
@@ -252,10 +270,9 @@ class CoreModel(_PrivateCoreModel):
         """
         Genera una key única para cada clase que va a funcionar incluso con tipos genéricos.
         """
-        type_params = getattr(cls, '__pydantic_generic_metadata__', {}).get('args', ())
-        if type_params:
-            return f"{cls.__name__}[{','.join(tp.__name__ for tp in type_params)}]"
-        return cls.__name__
+        base_key = _generate_simple_cls_key(cls)
+        complete_key = f"{cls.__cls_discriminator__}${base_key}" if cls.__cls_discriminator__ is not None else base_key
+        return complete_key
 
     @classmethod
     def polymorphic_single(cls, data: Any) -> Any:

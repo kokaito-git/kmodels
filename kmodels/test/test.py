@@ -133,22 +133,52 @@ Computer science student
 
 def test_omit_if():
     from kmodels.types import OmitIf, OmitIfNone, OmitIfUnset, Unset, unset
-    from abc import ABC, abstractmethod
-    class Testing(CoreModel, ABC):
+    class Testing(CoreModel):
         model_config = dict(strict=True)
 
         test_a: OmitIf[int | None, None] = None
         test_b: OmitIfNone[int | None] = None
         test_c: OmitIfUnset[int | Unset] = unset
 
-
-
     test = Testing(test_a=None)
     print(repr(test))
     print(test.model_dump())
 
 
+def test_module_name():
+    from typing import Generic, TypeVar
+    from pydantic import Field
+    INTEGER = TypeVar('INTEGER', bound=int)
+
+    class IntegerBase(CoreModel, Generic[INTEGER]):
+        ...
+
+    class Integer(IntegerBase[int]):
+        ...
+
+    class Testing(CoreModel):
+        __cls_discriminator__ = 'A'
+        b: str = 'B'
+        a: str | int = 'A'
+        integer: Integer = Field(default_factory=Integer)
+
+    def make_another_testing():
+        class Testing(CoreModel):
+            b: str = 'B'
+            a: str | int = 'A'
+            integer: Integer = Field(default_factory=Integer)
+
+        return Testing
+
+    Testing2 = make_another_testing()
+    Testing.register()
+    Testing2.register()
+
+    print(CoreModel.__class_registry__.keys())
+
+
 if __name__ == '__main__':
     # complex_test()
     # simple_test()
-    test_omit_if()
+    # test_omit_if()
+    test_module_name()
