@@ -6,7 +6,7 @@ setup(
     version="0.1.2.0",
     description="KModels",
     author_email="kokaito.git@gmail.com",
-    url="https://github.com/kokaito-git/knotification",
+    url="https://github.com/kokaito-git/kmodels",
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
