@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     author="kokaito-git",
     name="kmodels",
-    version="0.1.2.0",
+    version="0.1.2.1",
     description="KModels",
     author_email="kokaito.git@gmail.com",
     url="https://github.com/kokaito-git/kmodels",
@@ -23,13 +23,4 @@ setup(
     packages=find_packages(),
     python_requires=">=3.13",
     include_package_data=True,
-    # extras_require={
-    #     "Windows": ["WinToaster"],
-    #     "Linux": [],
-    # },
-    # packages=["knotification"],
-    # package_dir={"knotification": "knotification"},
-    # package_data={
-    #     "knotification": ["image/*", "sound/*"],
-    # },
 )
