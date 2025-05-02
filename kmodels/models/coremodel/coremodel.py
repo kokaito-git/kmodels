@@ -209,6 +209,16 @@ class _PrivateCoreModel(_CustomSerializator, ABC):
         args = ", ".join(f"{k}={v!r}" for k, v in self.__repr_args__())
         return f"{GREEN}{self.__class__.__name__}{END}({args})"
 
+    def __str__(self) -> str:
+        """
+        Custom string representation like: {GREEN}ClassName{END}(attr1=val1, attr2=val2)
+        """
+        args = ", ".join(f"{k}={v!r}" for k, v in self.__repr_args__())
+        return f"{GREEN}{self.__class__.__name__}{END}({args})"
+
+    def get_simple_str(self) -> str:
+        return super().__str__()
+
     @classmethod
     @abstractmethod
     def register(cls, target_classes: Type[CoreModel] | Iterable[Type[CoreModel]] | None = None) -> None:
