@@ -1,7 +1,7 @@
 from typing import TypeVar, TYPE_CHECKING, Annotated, Any
 from typing import final, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from kmodels.utils import UnionUtils
 
@@ -38,6 +38,7 @@ else:
 
 @final
 class Unset(BaseModel):
+    model_config = ConfigDict(frozen=True)
     discriminator: Literal['Unset'] = 'Unset'
 
     def __repr__(self) -> str:
@@ -46,6 +47,7 @@ class Unset(BaseModel):
 
 @final
 class Leave(BaseModel):
+    model_config = ConfigDict(frozen=True)
     discriminator: Literal['Leave'] = 'Leave'
 
     def __repr__(self) -> str:
