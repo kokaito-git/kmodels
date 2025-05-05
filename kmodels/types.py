@@ -42,7 +42,10 @@ class Unset(BaseModel):
     discriminator: Literal['Unset'] = 'Unset'
 
     def __repr__(self) -> str:
-        return "<unset>"
+        return "Unset()"
+
+    def __str__(self) -> str:
+        return "Unset()"
 
 
 @final
@@ -51,7 +54,10 @@ class Leave(BaseModel):
     discriminator: Literal['Leave'] = 'Leave'
 
     def __repr__(self) -> str:
-        return "<leave>"
+        return "Leave()"
+
+    def __str__(self) -> str:
+        return "Leave()"
 
 
 unset = Unset()
