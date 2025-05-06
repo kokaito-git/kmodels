@@ -36,28 +36,30 @@ else:
             return Annotated[accepted, OmitIf(accepted, excluded)]
 
 
-@final
-class Unset(BaseModel):
+class _SpecialType(BaseModel):
+    """Se abrirá públicamente cuando estemos seguros del nombre y la implementación."""
+
     model_config = ConfigDict(frozen=True)
     discriminator: Literal['Unset'] = 'Unset'
 
+    def __bool__(self) -> False:
+        return False
+
     def __repr__(self) -> str:
-        return "Unset()"
+        return self.__class__.__name__ + "()"
 
     def __str__(self) -> str:
-        return "Unset()"
+        return self.__repr__()
 
 
 @final
-class Leave(BaseModel):
-    model_config = ConfigDict(frozen=True)
+class Unset(_SpecialType):
+    discriminator: Literal['Unset'] = 'Unset'
+
+
+@final
+class Leave(_SpecialType):
     discriminator: Literal['Leave'] = 'Leave'
-
-    def __repr__(self) -> str:
-        return "Leave()"
-
-    def __str__(self) -> str:
-        return "Leave()"
 
 
 unset = Unset()
