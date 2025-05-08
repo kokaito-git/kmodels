@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     author="kokaito-git",
     name="kmodels",
-    version="0.1.2.8",
+    version="0.1.2.9",
     description="KModels",
     author_email="kokaito.git@gmail.com",
     url="https://github.com/kokaito-git/kmodels",
