@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import abstractmethod, ABC
 from typing import Any, ClassVar, Type, Iterable, TypeVar, get_args
 
-from jinja2.nodes import Literal
 from pydantic import BaseModel, model_validator, Field, model_serializer, PlainSerializer, ConfigDict
 from typeguard import typechecked
 from kmodels.types import OmitIfNone, OmitIfUnset, OmitIfType, OmitIfValue, OmitIfTypeValue

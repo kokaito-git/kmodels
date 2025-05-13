@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict
 
 from kmodels.utils import UnionUtils
 
-__all__ = ['OmitIfNone', 'OmitIfUnset', 'OmitIfValue', 'OmitIfType', 'Unset', 'Leave', 'unset', 'leave']
+__all__ = [
+    'OmitIfNone', 'OmitIfUnset', 'OmitIfValue', 'OmitIfType', 'OmitIfTypeValue', 'Unset', 'Leave', 'unset', 'leave'
+]
 
 AnyType = TypeVar("AnyType")
 
