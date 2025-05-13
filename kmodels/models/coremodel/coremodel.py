@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
-from typing import Any, ClassVar, Type, Iterable, TypeVar
+from typing import Any, ClassVar, Type, Iterable, TypeVar, get_args
 
-from pydantic import BaseModel, model_validator, Field, model_serializer, PlainSerializer
+from jinja2.nodes import Literal
+from pydantic import BaseModel, model_validator, Field, model_serializer, PlainSerializer, ConfigDict
 from typeguard import typechecked
-from kmodels.types import OmitIfNone, OmitIfUnset, OmitIf
+from kmodels.types import OmitIfNone, OmitIfUnset, OmitIfType, OmitIfValue, OmitIfTypeValue
 from kcolors.refs import GREEN, END
 
-from kmodels.utils import AbstractUtils
+from kmodels.utils import AbstractUtils, UnionUtils
+from kmodels.utils.literal_utils import LiteralUtils
 
 """
 TODO: 
@@ -30,82 +32,120 @@ def _generate_simple_cls_key(cls) -> str:
 
 
 class _CustomSerializator(BaseModel, ABC):
+    COUNTER: ClassVar[int] = 0
+
     """
     Custom serializer that omits fields marked with OmitIfNone and OmitIfUnset if their values are None or Unset.
     """
 
     def _get_part_of(self, target_cls: Type) -> set[str]:
         """
-        Returns a set with the names of fields that include target_cls in their metadata.
+        Returns a set with the names of fields that include `target_cls` (ex OmitIfNone, OmitIfUnset) in their metadata.
         Used to detect fields marked with OmitIfNone/OmitIfUnset.
         """
         return {
-            name
-            for name, field_info in self.model_fields.items()
+            name for name, field_info in self.__class__.model_fields.items()
             if any(isinstance(metadata, target_cls) for metadata in field_info.metadata)
         }
 
-    def _get_omit_if_custom(self) -> dict[str, tuple[type, ...]]:
+    def _get_omit_if_types_dict(self) -> dict[str, tuple[type, ...]]:
         """
-        Returns a dict with field names and the types that should be omitted if matched (for OmitIf).
+        Returns a dict with field names and the types that should be omitted if matched (for OmitIfType).
         """
         return {
             name: metadata.excluded
-            for name, field_info in self.model_fields.items()
+            for name, field_info in self.__class__.model_fields.items()
             for metadata in field_info.metadata
-            if isinstance(metadata, OmitIf)
+            if isinstance(metadata, OmitIfType)
+        }
+
+    def _get_omit_if_values_dict(self) -> dict[str, tuple[Any, ...]]:
+        return {
+            name: metadata.excluded
+            for name, field_info in self.__class__.model_fields.items()
+            for metadata in field_info.metadata
+            if isinstance(metadata, OmitIfValue)
         }
 
     def _get_serialize_aliases(self) -> dict[str, str]:
         """
-        Creates a dictionary of aliases from self.model_fields(). Required for aliasing to work properly.
+        Creates a dictionary of aliases from self.__class__.model_fields(). Required for aliasing to work properly.
         """
         return {
             name: field_info.serialization_alias
-            for name, field_info in self.model_fields.items()
+            for name, field_info in self.__class__.model_fields.items()
             if field_info.serialization_alias
         }
+
+    @classmethod
+    def _update_omit_dicts(cls) -> tuple[dict[str, tuple[type, ...]], dict[str, tuple[Any, ...]]]:
+        """
+        Actualiza los diccionarios omit_if_types y omit_if_values basándose en los metadatos de los campos,
+        incluyendo OmitIfTypesOrValues.
+        """
+        omit_if_type = {}
+        omit_if_value = {}
+
+        for name, field_info in cls.model_fields.items():
+            for metadata in field_info.metadata:
+                if isinstance(metadata, OmitIfType):
+                    omit_if_type[name] = metadata.excluded
+                elif isinstance(metadata, OmitIfValue):
+                    omit_if_value[name] = metadata.excluded
+                elif isinstance(metadata, OmitIfTypeValue):
+                    # Combina los tipos y valores excluidos de OmitIfTypesOrValues
+                    omit_if_type[name] = tuple(omit_if_type.get(name, ()) + tuple(metadata.accepted_types))
+                    omit_if_value[name] = tuple(omit_if_value.get(name, ()) + tuple(metadata.accepted_values))
+
+        return omit_if_type, omit_if_value
 
     @model_serializer
     def _core_serializer(self) -> dict[str, Any]:
         """
         Main serialization function.
         """
-        skip_if_none = self._get_part_of(OmitIfNone)
-        skip_if_unset = self._get_part_of(OmitIfUnset)
-        skip_if_custom = self._get_omit_if_custom()
-
+        omit_if_none = self._get_part_of(OmitIfNone)
+        omit_if_unset = self._get_part_of(OmitIfUnset)
+        omit_if_type, omit_if_value = self._update_omit_dicts()
         serialize_aliases = self._get_serialize_aliases()
-
         serialized = dict()
-        for name, value in self:
-            # OmitIf
-            if name in skip_if_custom:
-                # Si None está en los tipos lo delegamos a OmitIfNone
-                if None in skip_if_custom[name] and name not in skip_if_none:
-                    skip_if_none.add(name)
-                excluded_types = tuple(t for t in skip_if_custom[name] if t is not None)
+        for name, value in self.__dict__.items():  # Cambiado de `for name, value in self` a `self.__dict__.items()`
 
-                if isinstance(value, excluded_types):
+            # [1] OmitIfType
+            if name in omit_if_type:
+                # Añadimos None a omit_if_none que está especializado para None
+                # caso especial 1.1: Agregamos a OmitIfNone el tipo None para no usarlo con typechecked
+                if None in omit_if_type[name] and name not in omit_if_none:
+                    omit_if_none.add(name)
+
+                # caso especial 1.2: Si el tipo es una Literal tenemos que validarlo de otra manera
+                literals = LiteralUtils.extract_literals(omit_if_type[name])
+                if LiteralUtils.value_in_literals(value, literals):
                     continue
 
-            # OmitIfNone
-            if name in skip_if_none and value is None:
+                if UnionUtils.isinstance(value, UnionUtils.extract_types(omit_if_type[name])):
+                    continue
+
+            # [2] OmitIfValue
+            if name in omit_if_value and value in omit_if_value[name]:
                 continue
 
-            # OmitIfUnset
-            if name in skip_if_unset and type(value).__name__ == 'Unset':
+            # [3] OmitIfNone
+            if name in omit_if_none and value is None:
+                continue
+
+            # [4] OmitIfUnset
+            if name in omit_if_unset and type(value).__name__ == 'Unset':
                 continue
 
             serialize_key = serialize_aliases.get(name, name)
 
             # Run Annotated PlainSerializer
-            for metadata in self.model_fields[name].metadata:
+            for metadata in self.__class__.model_fields[name].metadata:
                 if isinstance(metadata, PlainSerializer):
                     value = metadata.func(value)
 
             serialized[serialize_key] = value
-
         return serialized
 
 
